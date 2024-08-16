@@ -6,10 +6,10 @@
 #include <SDL.h>
 
 // Number of program instructions an agent can have
-#define evo_agent_program_size 16
+#define evo_agent_program_size 12
 // Height and width of grid
-#define evo_grid_dimensions 128
-#define evo_state_population_size 100
+#define evo_grid_dimensions 64
+#define evo_state_population_size 1000
 
 const int evo_state_max_iterations = 5000;
 
@@ -66,6 +66,7 @@ void evo_agent_move_to(evo_agent* agent, int new_x, int new_y) {
 	if (new_x < 0 || new_x >= evo_grid_dimensions || new_y < 0 || new_y >= evo_grid_dimensions) {
 		return;
 	}
+	/*
 	evo_cell* old_cell = &((evo_state*)agent->state)->grid[agent->x][agent->y];
 	evo_cell* new_cell = &((evo_state*)agent->state)->grid[new_x][new_y];
 	if (new_cell->agent != NULL) {
@@ -75,6 +76,7 @@ void evo_agent_move_to(evo_agent* agent, int new_x, int new_y) {
 	old_cell->updated = true;
 	new_cell->agent = agent;
 	new_cell->updated = true;
+	*/
 	agent->x = new_x;
 	agent->y = new_y;
 }
@@ -156,8 +158,8 @@ void evo_state_initialize(evo_state* state) {
 
 float evo_agent_get_fitness(evo_agent* agent) {
 	float center = (float)evo_grid_dimensions * 0.5;
-	float dx = agent->x - center;
-	//float dy = ((float)agent->y + 0.5) - center;
+	float dx = ((float)agent->x + 0.5) - center;
+	float dy = ((float)agent->y + 0.5) - center;
 	//float distance = sqrtf(dx * dx);
 	//printf("%f\n", dx);
 	return 1 - fabs(dx / center);
@@ -169,7 +171,7 @@ evo_agent* evo_state_select_agent(evo_state* state) {
 		state->fitnesses[i] = evo_agent_get_fitness(&state->current_generation[i]);
 		total_fitness += state->fitnesses[i];
 	}
-	float random_choice = ((float)rand() / (float)RAND_MAX) * total_fitness;
+	float random_choice = (float)(((double)rand() / (double)RAND_MAX) * total_fitness);
 	float total = 0;
 	for (int i = 0; i < evo_state_population_size; i++) {
 		total += state->fitnesses[i];
@@ -181,7 +183,10 @@ evo_agent* evo_state_select_agent(evo_state* state) {
 }
 
 void evo_agent_breed(evo_agent* child, evo_agent* parent_1, evo_agent* parent_2) {
-	memcpy(child->program, parent_1->program, sizeof(instruction) * evo_agent_program_size);
+	int split = rand() % evo_agent_program_size;
+
+	memcpy(child->program, parent_1->program, sizeof(instruction) * split);
+	memcpy(child->program + (evo_agent_program_size - split - 1), parent_2->program, sizeof(instruction) * (evo_agent_program_size - split));
 }
 
 void evo_state_evolve(evo_state* state) {
