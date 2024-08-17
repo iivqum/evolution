@@ -6,9 +6,9 @@
 #include <SDL.h>
 
 // Number of program instructions an agent can have
-#define evo_agent_program_size 32
+#define evo_agent_program_size 64
 // Height and width of grid
-#define evo_grid_dimensions 128
+#define evo_grid_dimensions 256
 #define evo_state_population_size 1000
 
 const int evo_state_max_iterations = 5000;
@@ -22,6 +22,7 @@ typedef enum {
 	in_go_up,
 	in_go_down,
 	in_do_nothing,
+	in_go_to_start,
 	// End marker
 	in_last
 } instruction;
@@ -31,7 +32,7 @@ typedef struct {
 	// Where the agent is in its program
 	int step;
 	int x, y;
-	bool dead;
+	bool dead, updated;
 	// evo_state pointer
 	void* state;
 } evo_agent;
@@ -43,10 +44,10 @@ typedef struct {
 } evo_cell;
 
 typedef struct {
-	evo_cell grid[evo_grid_dimensions][evo_grid_dimensions];
-	evo_agent current_generation[evo_state_population_size];
-	evo_agent next_generation[evo_state_population_size];
-	float fitnesses[evo_state_population_size];
+	//evo_cell grid[evo_grid_dimensions][evo_grid_dimensions];
+	evo_agent* current_generation;
+	evo_agent* next_generation;
+	float* fitnesses;
 	float total_fitness;
 	int iterations;
 	int generation;
@@ -57,6 +58,7 @@ SDL_Renderer* renderer;
 
 void evo_agent_initialize(evo_agent* agent, evo_state* state, int x, int y) {
 	agent->dead = false;
+	agent->updated = false;
 	agent->step = 0;
 	agent->x = x;
 	agent->y = y;
@@ -98,6 +100,9 @@ void evo_agent_execute(evo_agent* agent) {
 		case in_go_down:
 			evo_agent_move_to(agent, agent->x, agent->y + 1);
 			break;
+		case in_go_to_start:
+			//agent->step = 0;
+			break;
 	}
 	agent->step++;
 
@@ -120,29 +125,34 @@ void evo_state_setup(evo_state* state) {
 	int x = 0;
 	int y = 0;
 
-	for (int i = 0; i < evo_grid_dimensions * evo_grid_dimensions; i++) {
-		cell = &state->grid;
-		cell += i;
-		cell->agent = NULL;
-		cell->updated = false;
-	}
-
 	for (int i = 0; i < evo_state_population_size; i++) {
 		agent = &state->current_generation[i];
+		/*
 		if (y >= evo_grid_dimensions) {
-			x++;
+			//x++;
 			y = 0;
 		}
 		if (x >= evo_grid_dimensions) {
 			printf("Too many agents!\n");
 			break;
 		}
-		evo_agent_initialize(agent, state, x, y); 
-		y++;
+		*/
+		evo_agent_initialize(agent, state, 0, evo_grid_dimensions * 0.5);
+		//y++;
 	}
 }
 
+void evo_state_cleanup(evo_state* state) {
+	free(state->current_generation);
+	free(state->next_generation);
+	free(state->fitnesses);
+}
+
 void evo_state_initialize(evo_state* state) {
+	state->current_generation = malloc(sizeof(evo_agent) * evo_state_population_size);
+	state->next_generation = malloc(sizeof(evo_agent) * evo_state_population_size);
+	state->fitnesses = malloc(sizeof(float) * evo_state_population_size);
+
 	for (int i = 0; i < evo_state_population_size; i++) {
 		evo_agent_randomize_program(&state->current_generation[i]);
 	}
@@ -158,12 +168,12 @@ float evo_agent_get_fitness(evo_agent* agent) {
 	float dx = ((float)agent->x + 0.5) - center;
 	float dy = ((float)agent->y + 0.5) - center;
 	//float distance = sqrtf(dx * dx);
-	//printf("%f\n", dx);
-	return 1 - fabs(dx / center);
+	float fitness = (fabs(dx) + fabs(dy)) / (float)evo_grid_dimensions;
+	return 1 - fitness;
 }
 
 evo_agent* evo_state_select_agent(evo_state* state) {
-	float random_choice = (float)(((double)rand() / (double)RAND_MAX) * state->total_fitness);
+	float random_choice = (float)(((double)rand() / (double)RAND_MAX)) * state->total_fitness;
 	float total = 0;
 	for (int i = 0; i < evo_state_population_size; i++) {
 		total += state->fitnesses[i];
@@ -187,7 +197,7 @@ void evo_agent_breed(evo_agent* child, evo_agent* parent_1, evo_agent* parent_2)
 	int split = rand() % evo_agent_program_size;
 
 	memcpy(child->program, parent_1->program, sizeof(instruction) * split);
-	memcpy(child->program + (evo_agent_program_size - split), parent_2->program, sizeof(instruction) * (evo_agent_program_size - split));
+	memcpy(child->program + (evo_agent_program_size - split), parent_2->program, sizeof(instruction) * (evo_agent_program_size - split + 1));
 }
 
 void evo_state_evolve(evo_state* state) {
@@ -202,21 +212,24 @@ void evo_state_evolve(evo_state* state) {
 	}
 	memcpy(state->current_generation, state->next_generation, sizeof(evo_agent) * evo_state_population_size);
 	evo_state_setup(state);
+	printf("Total fitness = %f, generation = %d\r", state->total_fitness, state->generation);
 }
 
 void evo_state_update(evo_state* state) {
-	evo_cell* cell;
 	evo_agent* agent;
 
 	for (int i = 0; i < evo_state_population_size; i++) {
 		agent = &state->current_generation[i];
+		if (agent->updated == true) {
+			continue;
+		}
 		evo_agent_execute(agent);
+		agent->updated = true;
 	}
 
-	for (int i = 0; i < evo_grid_dimensions * evo_grid_dimensions; i++) {
-		cell = &state->grid;
-		cell += i;
-		cell->updated = false;
+	for (int i = 0; i < evo_state_population_size; i++) {
+		agent = &state->current_generation[i];
+		agent->updated = false;
 	}
 
 	state->iterations++;
@@ -224,7 +237,7 @@ void evo_state_update(evo_state* state) {
 	if (state->iterations >= evo_state_max_iterations) {
 		state->iterations = 0;
 		state->generation++;
-		//evo_state_evolve(state);
+		evo_state_evolve(state);
 	}
 }
 
@@ -257,6 +270,8 @@ int main(void) {
 	window = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, window_width, window_height, 0);
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 
+	srand(time(NULL));
+
 	evo_state evolution;
 
 	evo_state_initialize(&evolution);
@@ -276,10 +291,13 @@ int main(void) {
 		evo_state_update(&evolution);
 		evo_state_draw(&evolution);
 		SDL_RenderPresent(renderer);
-		printf("%d\r", evolution.iterations);
 	}
 
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
 	SDL_Quit();
+
+	evo_state_cleanup(&evolution);
+
+	return 0;
 }
