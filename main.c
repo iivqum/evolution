@@ -6,9 +6,9 @@
 #include <SDL.h>
 
 // Number of program instructions an agent can have
-#define evo_agent_program_size 12
+#define evo_agent_program_size 32
 // Height and width of grid
-#define evo_grid_dimensions 64
+#define evo_grid_dimensions 128
 #define evo_state_population_size 1000
 
 const int evo_state_max_iterations = 5000;
@@ -47,6 +47,7 @@ typedef struct {
 	evo_agent current_generation[evo_state_population_size];
 	evo_agent next_generation[evo_state_population_size];
 	float fitnesses[evo_state_population_size];
+	float total_fitness;
 	int iterations;
 	int generation;
 } evo_state;
@@ -136,18 +137,14 @@ void evo_state_setup(evo_state* state) {
 			printf("Too many agents!\n");
 			break;
 		}
-		evo_agent_initialize(agent, state, x, y);
+		evo_agent_initialize(agent, state, x, y); 
 		y++;
 	}
 }
 
 void evo_state_initialize(evo_state* state) {
-	evo_cell* cell;
-	evo_agent* agent;
-
 	for (int i = 0; i < evo_state_population_size; i++) {
-		agent = &state->current_generation[i];
-		evo_agent_randomize_program(agent);
+		evo_agent_randomize_program(&state->current_generation[i]);
 	}
 
 	state->iterations = 0;
@@ -166,12 +163,7 @@ float evo_agent_get_fitness(evo_agent* agent) {
 }
 
 evo_agent* evo_state_select_agent(evo_state* state) {
-	float total_fitness = 0;
-	for (int i = 0; i < evo_state_population_size; i++) {
-		state->fitnesses[i] = evo_agent_get_fitness(&state->current_generation[i]);
-		total_fitness += state->fitnesses[i];
-	}
-	float random_choice = (float)(((double)rand() / (double)RAND_MAX) * total_fitness);
+	float random_choice = (float)(((double)rand() / (double)RAND_MAX) * state->total_fitness);
 	float total = 0;
 	for (int i = 0; i < evo_state_population_size; i++) {
 		total += state->fitnesses[i];
@@ -182,14 +174,25 @@ evo_agent* evo_state_select_agent(evo_state* state) {
 	return NULL;
 }
 
+void evo_state_compute_fitness(evo_state *state) {
+	float total_fitness = 0;
+	for (int i = 0; i < evo_state_population_size; i++) {
+		state->fitnesses[i] = evo_agent_get_fitness(&state->current_generation[i]);
+		total_fitness += state->fitnesses[i];
+	}
+	state->total_fitness = total_fitness;
+}
+
 void evo_agent_breed(evo_agent* child, evo_agent* parent_1, evo_agent* parent_2) {
 	int split = rand() % evo_agent_program_size;
 
 	memcpy(child->program, parent_1->program, sizeof(instruction) * split);
-	memcpy(child->program + (evo_agent_program_size - split - 1), parent_2->program, sizeof(instruction) * (evo_agent_program_size - split));
+	memcpy(child->program + (evo_agent_program_size - split), parent_2->program, sizeof(instruction) * (evo_agent_program_size - split));
 }
 
 void evo_state_evolve(evo_state* state) {
+	evo_state_compute_fitness(state);
+
 	for (int i = 0; i < evo_state_population_size; i++) {
 		// It's possible for a parent to breed with itself
 		evo_agent* parent_a = evo_state_select_agent(state);
@@ -221,7 +224,7 @@ void evo_state_update(evo_state* state) {
 	if (state->iterations >= evo_state_max_iterations) {
 		state->iterations = 0;
 		state->generation++;
-		evo_state_evolve(state);
+		//evo_state_evolve(state);
 	}
 }
 
